@@ -13,6 +13,7 @@ struct udp_conn{
 	struct sockaddr_in client;
 	socklen_t client_len;
 };
+typedef struct udp_conn udp_conn;
 
 // initialize the struct and connect to a udp server on the given port and ip
 int udp_init_client(struct udp_conn *udp, int port, char *ip);
