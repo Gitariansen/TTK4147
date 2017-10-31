@@ -12,9 +12,10 @@
 
 #define SERVER_PORT 	9999
 #define SERVER_IP 		"192.168.0.1"
-#define PERIOD 			10000
-#define REFERENCE		1
+#define PERIOD_US 		2000
 #define RUNTIME_US		500000
+
+static const float reference = 1.0;
 
 struct server_commands{
 	char* START;
@@ -25,14 +26,17 @@ struct server_commands{
 };
 
 void *program_controller(void* commands);
-void *pi_controller();
+void *pi_controller(void* udp_connector);
 void *server_listener(void* udp_connector);
 void *server_responder();
 void server_commands_init(struct server_commands *commands);
 
 float y;
 struct server_commands server_commands;
-sem_t PI_sem;
+
+sem_t y_received;
+
+pthread_mutex_t y_lock;
 
 /*
 #####################################
@@ -40,7 +44,7 @@ sem_t PI_sem;
 #####################################
 */
 
-//TODO mutex udp??
+//TODO synchronise everything!
 
 
 int main(){
@@ -54,7 +58,8 @@ int main(){
 	udp_init_client(&UDP_connector, SERVER_PORT, SERVER_IP);
 	
 	// Init sem - move this somewhere nice
-	sem_init(&PI_sem, 0, 1);
+	sem_init(&y_received, 0, 0);
+
 	
 	// Start simulation
 	udp_send(&UDP_connector, server_commands.START, strlen(server_commands.START) + 1);
@@ -65,7 +70,7 @@ int main(){
 	//pthread_t server_responder_thread;
 
 	pthread_create(&program_controller_thread, NULL, program_controller, &UDP_connector);
-	pthread_create(&pi_controller_thread, NULL, pi_controller, NULL);
+	pthread_create(&pi_controller_thread, NULL, pi_controller, &UDP_connector);
 	pthread_create(&server_listener_thread, NULL, server_listener, &UDP_connector);
 	//pthread_create(&server_responder_thread, NULL, server_listener, NULL);
 	
@@ -83,37 +88,59 @@ int main(){
 
 
 
-void *pi_controller(){
+void *pi_controller(void* udp_connector){
+
+	udp_conn udpConnector = *((udp_conn*)udp_connector);
+	
 	int k_p = 10;
 	int k_i = 800;
 	float integral = 0;
 	float error = 0;
 	float u = 0;
+	char u_str[32];
+	float period_s = PERIOD_US/100000;
+	
 	printf("PI-controller started..\n");
 	while(1){
-		sem_wait(&PI_sem);
-		error = REFERENCE - y;
-		integral = integral + (error * PERIOD);
-		u = k_p * error + k_i * integral;
-		printf("value of u: %d \n", u);		
-		//TODO send u to udp
+	
+		//sem_wait(&y_received);
+		//pthread_mutex_lock(&y_lock);
+		
+		error = reference - y;
+		integral = integral + (error * period_s);
+		u = (k_p * error) + (k_i * integral);
+		
+		printf("Value of u:		%f \n", u);		
+		sprintf(u_str, "SET:%f", u);
+		
+		//pthread_mutex_unlock(&y_lock);
+
+	
+		udp_send(&udpConnector, u_str, strlen(u_str) + 1);
+
 	}
 	
 }
 
 
 void *server_listener(void* udp_connector){
-	int thing;
 	char y_str[32];
 	udp_conn udpConnector = *((udp_conn*)udp_connector);
 	char received_msg[32];
 	while(1){
-		if(thing = udp_receive(&udpConnector, received_msg, sizeof(received_msg))){
+	
+
+		if(udp_receive(&udpConnector, received_msg, sizeof(received_msg))){
 			if(strncmp(received_msg, server_commands.GET_ACK, strlen(server_commands.GET_ACK)) == 0){
+				
+				//pthread_mutex_lock(&y_lock);
+				
 				strncpy(y_str, (received_msg + 8), 8); //TODO generalise 8? split at ":"?
-				printf("Value of y:		%s\n", y_str);	
+				printf("	Value of y:		%s\n", y_str);	
 				y = atof(y_str);
-				sem_post(&PI_sem);
+				
+				//pthread_mutex_unlock(&y_lock);
+				//sem_post(&y_received);
 			}
 		}	
 	}
@@ -127,9 +154,9 @@ void *program_controller(void* udp_connector){
 	int counter = 0;
 	clock_gettime(CLOCK_REALTIME, &next);
 	
-	while(counter < (RUNTIME_US/PERIOD)){
+	while(counter < (RUNTIME_US/PERIOD_US)){
 		udp_send(&udpConnector, server_commands.GET, strlen(server_commands.GET) + 1);
-		timespec_add_us(&next, PERIOD);
+		timespec_add_us(&next, PERIOD_US);
 		clock_nanosleep(&next);
 		counter++;
 	}
