@@ -1,0 +1,4 @@
+ABOUT THE PERIOD:
+	After sending a GET signal to the server we noticed that it took around 1500-2000us before a new setpoint was received at the server (see plot4), and therefore the controller period had to be longer than this in order to not miss deadlines. We then tuned the period to get a satisfactory setpoint regulation.
+	
+	We used semaphores to signal between threads, the server_listener thread increments the y_received semaphore when a new y value is received, then the pi_controller thread responds by calculating and sending a new u to the server and incrementing the u_sent semaphore, if the sleep period is over and a new u has been sent, the program_controller thread (the master thread) requests a new y from the server, and then over again. This loop continues for 0.5sec.

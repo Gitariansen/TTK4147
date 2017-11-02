@@ -1,0 +1,13 @@
+
+-PART 1-
+ABOUT THE PERIOD:
+	After sending a GET signal to the server we noticed that it took around 1500-2000us before a new setpoint was received at the server (see plot4), and therefore the controller period had to be longer than this in order to not miss deadlines. We then tuned the period to get a satisfactory setpoint regulation. From the controller step time plot we see that the deadline is never missed. We chose a period of 4000us. 
+ABOUT DESIGN CHOICES:
+	We used semaphores to signal between threads, the server_listener thread increments the y_received semaphore when a new y value is received, then the pi_controller thread responds by calculating and sending a new u to the server and incrementing the u_sent semaphore, if the sleep period is over and a new u has been sent, the program_controller thread (the master thread) requests a new y from the server, and then over again. This loop continues for 0.5sec.
+
+-PART 2-
+ABOUT THE SIGNALING TASK:
+	From the plot we see that the period time between GET request and the controller step time has higher variance than in the first task. This must be because of the extra signal the microcontroller has to respond to. From the controller step time plot we see that the deadline just barely holds and is never/seldom missed. Still the overall response for the state to be controlled is still satisfactory.
+ABOUT DESIGN CHOICES:
+	Because we created a program with multiple threads (3) in part 1, where one was a master thread, it was easy to add an additional thread to the program. The synchronization in part 1 was extended by having the program_controller thread increment a signal_ack_req semaphore when a SIGNAL from the server was received. The new thread waits for this semaphore and immediately responds to it when its incremented by the program_controller thread.
+	
